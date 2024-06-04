@@ -7,11 +7,11 @@ NOP
     bdb_oem:                        DB  'MSWIN4.l'
     bdb_bytes_per_sector:           DW  512
     bdb_sectors_per_cluster:        DB  1
-    bdb_reserved_sectors:           DW  1
+    bdb_reserved_sectors:             DW  1
     bdb_fat_count:                  DB  2
     bdb_dir_entries_count:          DW  0E0h
     bdb_total_sectors:              DW  2880
-    bdb_media_descriptor_type:      DB  0F0h
+    bdb_media_descriptor_type   :      DB  0F0h
     bdb_sectors_per_fat:            DW  9
     bdb_sectors_per_track:          DW  18
     bdb_heads:                      DW  2
@@ -35,17 +35,123 @@ main:
 
     MOV sp, 0x7C00
 
-    MOV dl, [ebr_drive_number]
-    MOV ax, 1
-    MOV cl, 1
-    MOV bx, 0x7E00
-    CALL disk_read
-
-
     MOV si, os_boot_msg
     CALL print
-    HLT
 
+    ; disk divided into 4 segments :: reserved segment (1 sector); fat segment (18 sectors)
+    ;                                 root directory; Data 
+
+    MOV ax, [bdb_sectors_per_fat]
+    MOV bl, [bdb_fat_count]
+    XOR bh, bh
+    MUL bx 
+    ADD ax, [bdb_reserved_sectors] ; LBA of the root d
+    PUSH ax
+
+    MOV ax, [bdb_dir_entries_count]
+    SHL ax, 5
+    XOR dx, dx
+    DIV word [bdb_bytes_per_sector]
+
+    TEST dx, dx
+    JZ rootDirAfter
+    INC ax  
+
+
+rootDirAfter:
+    MOV cl, al
+    POP ax 
+    MOV dl, [ebr_drive_number]
+    MOV bx, buffer
+    CALL disk_read
+
+    XOR bx, bx 
+    MOV di, buffer
+
+searchKernel:  ; BUG le programme n'arrive pas à recomparer si avec un autre chemin
+    MOV si, file_kernel_bin
+    MOV cx, 11 
+    PUSH di
+    REPE CMPSB
+    POP di
+    JE foundKernel
+
+    ADD di, 32  ; le bug vient potentiellement du +32
+    INC bx
+    CMP bx, [bdb_dir_entries_count]
+    JL searchKernel
+
+    JMP KernelNotFound
+
+KernelNotFound:
+    MOV si, msg_kernel_not_found
+    call print
+
+    HLT 
+    jmp halt
+
+foundKernel:
+    MOV ax, [di+26]
+    MOV [kernel_cluster], ax
+
+    MOV ax, [bdb_reserved_sectors]
+    MOV bx, buffer
+    MOV cl, [bdb_sectors_per_fat]
+    MOV dl, [ebr_drive_number]
+
+    CALL disk_read
+
+    MOV bx, kernel_load_segment
+    MOV es, bx
+    MOV bx, kernel_load_offset
+
+loadKernelLoop:
+    MOV ax, [kernel_cluster]
+    ADD ax, 31
+    MOV cl, 1
+    MOV dl, [ebr_drive_number]
+
+    call disk_read
+
+    ADD bx, [bdb_bytes_per_sector]
+
+    MOV ax, [kernel_cluster]; (kernel_cluster*2)/3
+    MOV cx, 3
+    MUL cx
+    MOV cx, 2
+    DIV cx
+
+    MOV si, buffer
+    ADD si, ax
+    MOV ax, [ds:si]
+
+    OR dx, dx
+    JZ even
+
+odd:
+    SHR ax, 4
+    JMP nextClusterAfter
+
+
+even:
+    AND ax, 0x0FFF
+
+nextClusterAfter:
+    CMP ax, 0x0FF8
+    JAE readFinish
+
+    MOV [kernel_cluster], ax
+    JMP loadKernelLoop
+
+readFinish:
+    MOV dl, [ebr_drive_number]
+    MOV ax, kernel_load_segment
+    MOV ds, ax
+    MOV es, ax
+
+    JMP kernel_load_segment: kernel_load_offset
+
+    HLT
 
 halt:
     JMP halt
@@ -152,8 +258,16 @@ done_print:
     POP si
     RET
 
-os_boot_msg: DB 'The KIKA dial CACA has booted', 0x0D, 0x0A, 0
-read_failure: DB 'The disk failed to be read', 0x0D, 0x0A, 0
-reset_failure: DB 'The disk failed to reset', 0x0D, 0x0A, 0
+os_boot_msg: DB 'CACA IS LOADING ...', 0x0D, 0x0A, 0
+read_failure: DB 'READING THE DISK FAILED', 0x0D, 0x0A, 0
+file_kernel_bin: DB 'KERNEL  BIN', 0
+msg_kernel_not_found: DB 'KERNEL.BIN EST PORTE DISPARUS!', 0
+kernel_cluster: DW 0
+
+kernel_load_segment EQU 0x2000
+kernel_load_offset EQU 0
+
 TIMES 510-($-$$) DB 0
 DW 0AA55h
+
+buffer: 

@@ -21,7 +21,7 @@ $(BUILD_DIR)/main.img: bootloader kernel
 
 kernel: $(BUILD_DIR)/kernel.bin
 $(BUILD_DIR)/kernel.bin:
-	$(ASM) $(SRC_DIR)/kernel/main.asm -f elf32 bin -o $(BUILD_DIR)/kernel.bin
+	$(ASM) $(SRC_DIR)/kernel/main.asm -f bin -o $(BUILD_DIR)/kernel.bin
 
 #
 # Rule for creating the bootlader
@@ -29,4 +29,4 @@ $(BUILD_DIR)/kernel.bin:
 
 bootloader: $(BUILD_DIR)/bootloader.bin
 $(BUILD_DIR)/bootloader.bin:
-	$(ASM) $(SRC_DIR)/bootloader/boot.asm -f elf32 bin -o $(BUILD_DIR)/bootloader.bin
+	$(ASM) $(SRC_DIR)/bootloader/boot.asm -f bin -o $(BUILD_DIR)/bootloader.bin
