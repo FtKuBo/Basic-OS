@@ -1,2 +1,2 @@
 # Basic-OS
-OS built from scratch using x86 NASM
+Just playing to learn the basic of bootloading and O.S with x86 NASM
